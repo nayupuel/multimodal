@@ -11,6 +11,7 @@ env:
   CODE_DEPLOY_APPLICATION_NAME: MyWebApp # 당신의 CodeDeploy 애플리케이션 이름으로 변경
   CODE_DEPLOY_DEPLOYMENT_GROUP_NAME: MyWebApp-Production # 당신의 CodeDeploy 배포 그룹 이름으로 변경
 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest # 워크플로우를 실행할 가상 환경
