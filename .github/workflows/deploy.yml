@@ -1,0 +1,62 @@
+name: CI/CD with GitHub Actions and AWS CodeDeploy
+
+on:
+  push:
+    branches:
+      - dev # dev 브랜치에 푸시될 때마다 워크플로우 실행
+
+env:
+  AWS_REGION: ap-northeast-2 # 당신의 AWS 리전으로 변경 (예: us-east-1, ap-northeast-2)
+  S3_BUCKET_NAME: mydeploy-uplus # 당신의 S3 버킷 이름으로 변경
+  CODE_DEPLOY_APPLICATION_NAME: MyWebApp # 당신의 CodeDeploy 애플리케이션 이름으로 변경
+  CODE_DEPLOY_DEPLOYMENT_GROUP_NAME: MyWebApp-Production # 당신의 CodeDeploy 배포 그룹 이름으로 변경
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest # 워크플로우를 실행할 가상 환경
+  
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Install dependencies (optional, if your app needs Node/npm)
+      # 만약 Node.js/npm 기반의 프로젝트라면 이 부분을 추가하세요.
+      # uses: actions/setup-node@v4
+      # with:
+      #   node-version: '18'
+      # run: npm install
+
+    - name: Build project (optional, if your app needs building)
+      # 만약 웹팩/빌드 스크립트 등이 필요하다면 이 부분을 추가하세요.
+      # run: npm run build # 예시: React/Vue 프로젝트의 빌드 명령어
+      # 지금은 HTML/CSS/JS라서 별도 빌드 단계는 생략해도 됩니다.
+
+    - name: Create deployment package
+      run: |
+        mkdir deploy-package
+      # 당신의 웹 애플리케이션 파일들을 deploy-package 안으로 복사
+        cp -r ./* deploy-package/ # 현재 폴더의 모든 파일을 복사 (hidden files 포함)
+      # appspec.yml과 scripts 폴더가 루트에 있어야 함
+      # 만약 빌드 결과물이 있다면, 예를 들어 build/ 폴더의 내용을 복사
+      # cp -r ./build/* deploy-package/
+        zip -r deploy-package.zip deploy-package
+
+    - name: Upload to S3
+      run: |
+        aws s3 cp deploy-package.zip s3://${{ env.S3_BUCKET_NAME }}/deploy-package.zip
+
+    - name: Create CodeDeploy deployment
+      run: |
+        aws deploy create-deployment \
+          --application-name ${{ env.CODE_DEPLOY_APPLICATION_NAME }} \
+          --deployment-group-name ${{ env.CODE_DEPLOY_DEPLOYMENT_GROUP_NAME }} \
+          --s3-location bucket=${{ env.S3_BUCKET_NAME }},key=deploy-package.zip,bundleType=zip \
+          --description "Deployment from GitHub Actions"
+       
