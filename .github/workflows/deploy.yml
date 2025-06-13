@@ -40,11 +40,11 @@ jobs:
       - name: Create deployment package
         run: |
           mkdir deploy-package
-        # 당신의 웹 애플리케이션 파일들을 deploy-package 안으로 복사
+          # 당신의 웹 애플리케이션 파일들을 deploy-package 안으로 복사
           cp -r ./* deploy-package/ # 현재 폴더의 모든 파일을 복사 (hidden files 포함)
-        # appspec.yml과 scripts 폴더가 루트에 있어야 함
-        # 만약 빌드 결과물이 있다면, 예를 들어 build/ 폴더의 내용을 복사
-        # cp -r ./build/* deploy-package/
+          # appspec.yml과 scripts 폴더가 루트에 있어야 함
+          # 만약 빌드 결과물이 있다면, 예를 들어 build/ 폴더의 내용을 복사
+          # cp -r ./build/* deploy-package/
           zip -r deploy-package.zip deploy-package
 
       - name: Upload to S3
