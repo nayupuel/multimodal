@@ -1,0 +1,44 @@
+# .github/workflows/deploy-service.yml
+name: Deploy to Service Environment
+
+on:
+  push:
+    branches:
+      - service # service 브랜치에 푸시될 때 트리거
+
+env:
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET_NAME: mydeploy-uplus
+  CODE_DEPLOY_APPLICATION_NAME: MyWebApp
+  CODE_DEPLOY_DEPLOYMENT_GROUP_NAME: MyWebApp-Service # service 환경용 배포 그룹 이름
+  # 이 부분이 핵심입니다!
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create deployment package
+        run: |
+          zip -r deploy-package.zip . -x ".git/*" -x ".github/*" -x "deploy-package/*" -x "**/node_modules/*"
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp deploy-package.zip s3://${{ env.S3_BUCKET_NAME }}/service/deploy-package.zip # service 전용 S3 경로
+
+      - name: Create CodeDeploy deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ env.CODE_DEPLOY_APPLICATION_NAME }} \
+            --deployment-group-name ${{ env.CODE_DEPLOY_DEPLOYMENT_GROUP_NAME }} \
+            --s3-location bucket=${{ env.S3_BUCKET_NAME }},key=service/deploy-package.zip,bundleType=zip \
+            --description "Deployment from GitHub Actions to Service"
