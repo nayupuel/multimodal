@@ -36,25 +36,20 @@ jobs:
           aws s3 cp deploy-package.zip s3://${{ env.S3_BUCKET_NAME }}/stg/deploy-package.zip # stg 전용 S3 경로
 
       - name: Create CodeDeploy deployment
-        run: |
-          aws deploy create-deployment \
-            --application-name ${{ env.CODE_DEPLOY_APPLICATION_NAME }} \
-            --deployment-group-name ${{ env.CODE_DEPLOY_DEPLOYMENT_GROUP_NAME }} \
-            --s3-location bucket=${{ env.S3_BUCKET_NAME }},key=stg/deploy-package.zip,bundleType=zip \
-            --description "Deployment from GitHub Actions to Staging"
-
-      - name: Wait for deployment to complete #codedeploy 배포 완료 대기
+        id: create-deployment
         run: |
           DEPLOYMENT_ID=$(aws deploy create-deployment \
             --application-name ${{ env.CODE_DEPLOY_APPLICATION_NAME }} \
             --deployment-group-name ${{ env.CODE_DEPLOY_DEPLOYMENT_GROUP_NAME }} \
             --s3-location bucket=${{ env.S3_BUCKET_NAME }},key=stg/deploy-package.zip,bundleType=zip \
-            --description "Deployment from GitHub Actions to Staging (Monitoring)" \
+            --description "Deployment from GitHub Actions to Staging" \
             --query 'deploymentId' --output text)
+          echo "Deployment ID: ${DEPLOYMENT_ID}"
+          echo "deployment_id=${DEPLOYMENT_ID}" >> $GITHUB_OUTPUT # 다음 스텝에서 사용할 수 있도록 출력값을 저장합니다.
 
-          echo "Deployment ID: ${DEPLOYMENT_ID} to complete.."
-          aws deploy wait deployment-successful --deployment-id ${DEPLOYMENT_ID}
-          echo "Deployment ID: ${DEPLOYMENT_ID} completed."
+      - name: Wait for deployment to complete #codedeploy 배포 완료 대기
+        run: |
+          aws deploy wait deployment-successful --deployment-id ${{ steps.create-deployment.outputs.deployment_id }} # 이전 스텝의 deployment_id를 사용합니다.
       
       - name: Get EC2 Instance IP for Staging/Service
         id: get-ec2-ip # 이 스텝의 출력을 참조하기 위한 ID
