@@ -1,0 +1,85 @@
+# .github/workflows/deploy-service.yml
+name: Deploy to Service Environment
+
+on:
+  push:
+    branches:
+      - service # service 브랜치에 푸시될 때 트리거
+
+env:
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET_NAME: mydeploy-uplus
+  CODE_DEPLOY_APPLICATION_NAME: MyWebApp
+  CODE_DEPLOY_DEPLOYMENT_GROUP_NAME: MyWebApp-Service # service 환경용 배포 그룹 이름
+  # 이 부분이 핵심입니다!
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create deployment package
+        run: |
+          zip -r deploy-package.zip . -x ".git/*" -x ".github/*" -x "deploy-package/*" -x "**/node_modules/*"
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp deploy-package.zip s3://${{ env.S3_BUCKET_NAME }}/service/deploy-package.zip # service 전용 S3 경로
+
+      - name: Create CodeDeploy deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ env.CODE_DEPLOY_APPLICATION_NAME }} \
+            --deployment-group-name ${{ env.CODE_DEPLOY_DEPLOYMENT_GROUP_NAME }} \
+            --s3-location bucket=${{ env.S3_BUCKET_NAME }},key=service/deploy-package.zip,bundleType=zip \
+            --description "Deployment from GitHub Actions to Service"
+      
+      - name: Get EC2 Instance IP for Staging/Service
+        id: get-ec2-ip # 이 스텝의 출력을 참조하기 위한 ID
+            # 해당 배포그룹에 속한 EC2 인스턴스의 IP 주소찾고, 그 ID로 IP 주소를 찾습니다.
+            # 여기서는  MyWebApp-Staging 태그가 있는 EC2 인스턴스의 IP 주소를 찾습니다.
+        run: |
+          EC2_INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${{ env.CODE_DEPLOY_DEPLOYMENT_GROUP_NAME }}" \
+            "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" --output text)
+    
+          if [ -z "$EC2_INSTANCE_ID" ]; then
+            echo "No running EC2 instance found for deployment group: ${CODE_DEPLOY_DEPLOYMENT_GROUP_NAME}"
+            exit 1
+          fi
+          EC2_IP=$(aws ec2 describe-instances \
+            --instance-ids $EC2_INSTANCE_ID \
+            --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+    
+          if [ -z "$EC2_IP" ]; then
+            echo "Error : No public IP found for EC2 instance: $EC2_INSTANCE_ID"
+            exit 1
+          fi
+          echo "Discovered EC2 IP: $EC2_IP"
+          echo "public_ip=${EC2_IP}" >> $GITHUB_OUTPUT
+    
+
+      - name: Perform Smoke Test on Deployed Application # 새로 추가할 스탭
+        run: |
+          echo "Running smoke test for ${{ steps.get-ec2-ip.outputs.public_ip }}"
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ steps.get-ec2-ip.outputs.public_ip }})
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "Smoke test passed."
+          else
+            echo "Smoke test successful! HTTP status: $HTTP_STATUS"
+            exit 1
+          fi
+    
+          # - name: Clean up deployment package
+          #   run: |
+          #     aws s3 rm s3://${{ env.S3_BUCKET_NAME }}/stg/deploy-package.zip
