@@ -2,7 +2,7 @@ version: 0.0
 os: linux
 files:
   - source: /
-    destination: /var/www/html # EC2 인스턴스의 웹 서버 루트 디렉토리
+    destination: /usr/share/nginx/html # EC2 인스턴스의 웹 서버 루트 디렉토리
 hooks:
   BeforeInstall:
     - location: scripts/before_install.sh
